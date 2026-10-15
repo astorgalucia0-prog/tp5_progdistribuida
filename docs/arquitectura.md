@@ -8,7 +8,7 @@
 - **Repositorio Remoto Único:** [https://github.com/astorgalucia0-prog/tp5_progdistribuida](https://github.com/astorgalucia0-prog/tp5_progdistribuida)
 - **Rama Principal:** `main`
 - **Rama de Trabajo:** `docs/arquitectura`
-- **Integrantes del Grupo (Grupo N° 5):**
+- **Integrantes del Grupo (Grupo N° 8):**
   - **Astorga, Lucía** (astorgalucia0@gmail.com)
   - **Bustos, Emmanuel**
   - **Lombardo, Damián**

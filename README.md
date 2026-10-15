@@ -11,7 +11,7 @@ Repositorio base y evolutivo único para el desarrollo de trabajos prácticos de
 - **Rama Principal:** `main`
 - **Rama de Trabajo de Arquitectura:** `docs/arquitectura`
 - **Etiqueta de Entrega TP5:** `tp5-entrega`
-- **Integrantes del Grupo (Grupo N° 5):**
+- **Integrantes del Grupo (Grupo N° 8):**
   - **Astorga, Lucía**
   - **Bustos, Emmanuel**
   - **Lombardo, Damián**
