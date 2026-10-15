@@ -1,0 +1,30 @@
+# Dependencias
+node_modules/
+
+# Entornos y variables sensibles
+.env
+.env.local
+.env.*.local
+
+# Archivos de logs y depuración (Consigna 4.6)
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Datos de persistencia y estado Raft en tiempo de ejecución
+data/
+
+# Certificados y claves privadas SSL/TLS (Consigna 4.6)
+certs/*.pfx
+certs/*.pem
+certs/*.key
+certs/*.crt
+certs/*.cer
+
+# Archivos del sistema y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

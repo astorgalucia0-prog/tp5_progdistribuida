@@ -1,0 +1,28 @@
+{
+  "name": "tp3-api-rest",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/service.js",
+  "scripts": {
+    "start": "node scripts/start-node.js node1",
+    "dev": "nodemon scripts/start-node.js node1",
+    "node1": "node scripts/start-node.js node1",
+    "node2": "node scripts/start-node.js node2",
+    "node3": "node scripts/start-node.js node3",
+    "dev:node1": "nodemon scripts/start-node.js node1",
+    "dev:node2": "nodemon scripts/start-node.js node2",
+    "dev:node3": "nodemon scripts/start-node.js node3"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
+    "mongoose": "^9.9.4",
+    "redis": "^6.2.1",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
