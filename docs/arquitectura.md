@@ -8,6 +8,11 @@
 - **Repositorio Remoto Único:** [https://github.com/astorgalucia0-prog/tp5_progdistribuida](https://github.com/astorgalucia0-prog/tp5_progdistribuida)
 - **Rama Principal:** `main`
 - **Rama de Trabajo:** `docs/arquitectura`
+- **Integrantes del Grupo (Grupo N° 5):**
+  - **Astorga, Lucía** (astorgalucia0@gmail.com)
+  - **Bustos, Emmanuel**
+  - **Lombardo, Damián**
+  - **Militello, Santiago**
 - **Docentes de la Cátedra incorporados:**
   - Adriel Álvarez (`alvarezadriel@uch.edu.ar`)
   - Edgardo Cortez (`cortezedgardo@uch.edu.ar`)

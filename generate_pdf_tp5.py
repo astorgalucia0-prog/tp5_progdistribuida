@@ -159,7 +159,7 @@ elements.append(HRFlowable(width="100%", thickness=1.5, color=primary_color, spa
 datos_generales = [
     [Paragraph("<b>Repositorio Remoto Único:</b>", tb_style), Paragraph("<font color='#1A365D'><u>https://github.com/astorgalucia0-prog/tp5_progdistribuida</u></font>", tb_code_style)],
     [Paragraph("<b>Rama Principal / Rama de Trabajo:</b>", tb_style), Paragraph("<code>main</code> | <code>docs/arquitectura</code> (Tag: <code>tp5-entrega</code>)", tb_code_style)],
-    [Paragraph("<b>Integrantes del Grupo:</b>", tb_style), Paragraph("Lucía Astorga (astorgalucia0@gmail.com) [Grupo N° 5]", tb_style)],
+    [Paragraph("<b>Integrantes del Grupo:</b>", tb_style), Paragraph("<b>Grupo N° 5:</b> Astorga Lucía &bull; Bustos Emmanuel &bull; Lombardo Damián &bull; Militello Santiago", tb_style)],
     [Paragraph("<b>Docentes Colaboradores:</b>", tb_style), Paragraph("Adriel Álvarez (alvarezadriel@uch.edu.ar) &bull; Edgardo Cortez (cortezedgardo@uch.edu.ar)", tb_style)],
     [Paragraph("<b>Versión Funcional de Partida:</b>", tb_style), Paragraph("API REST Distribuida con Consenso Raft (Cluster 3 Nodos), MongoDB y Redis Lock (TP4)", tb_style)]
 ]
@@ -371,7 +371,7 @@ elements.append(Spacer(1, 8))
 elements.append(Paragraph("8. Resumen de Entregables de la Etapa (Sección 14)", h1_style))
 elements.append(Paragraph(
     "&bull; <b>1. Repositorio Remoto Único:</b> <font color='#1A365D'><u>https://github.com/astorgalucia0-prog/tp5_progdistribuida</u></font><br/>"
-    "&bull; <b>2. Integrantes:</b> Lucía Astorga (Grupo N° 5)<br/>"
+    "&bull; <b>2. Integrantes (Grupo N° 5):</b> Astorga Lucía, Bustos Emmanuel, Lombardo Damián, Militello Santiago<br/>"
     "&bull; <b>3. Docentes Colaboradores:</b> Adriel Álvarez (alvarezadriel@uch.edu.ar) y Edgardo Cortez (cortezedgardo@uch.edu.ar)<br/>"
     "&bull; <b>4. Versión Base Funcional:</b> Preservada en commit inicial <code>d57faec</code> (Cluster Raft 3 nodos con Redis Lock y Mongoose)<br/>"
     "&bull; <b>5. Seguridad y Datos Sensibles:</b> <code>.gitignore</code> blindado (node_modules, .env, *.log, certs) y <code>.env.example</code> documentado<br/>"

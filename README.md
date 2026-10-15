@@ -11,6 +11,11 @@ Repositorio base y evolutivo único para el desarrollo de trabajos prácticos de
 - **Rama Principal:** `main`
 - **Rama de Trabajo de Arquitectura:** `docs/arquitectura`
 - **Etiqueta de Entrega TP5:** `tp5-entrega`
+- **Integrantes del Grupo (Grupo N° 5):**
+  - **Astorga, Lucía**
+  - **Bustos, Emmanuel**
+  - **Lombardo, Damián**
+  - **Militello, Santiago**
 - **Docentes Colaboradores:**
   - Adriel Álvarez (`alvarezadriel@uch.edu.ar`)
   - Edgardo Cortez (`cortezedgardo@uch.edu.ar`)
