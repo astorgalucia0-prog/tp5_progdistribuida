@@ -44,7 +44,6 @@ tp5_progdistribuida/
 ├── scripts/                         # Scripts de ejecución de nodos
 ├── .env.example                     # Plantilla de variables de entorno documentada
 ├── .gitignore                       # Blindaje estricto de dependencias y secretos
-├── generate_pdf_tp5.py              # Generador de informe académico oficial en PDF (TP5)
 ├── package.json                     # Manifiesto de dependencias
 └── README.md                        # Documentación principal
 ```
