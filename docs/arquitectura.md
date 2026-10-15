@@ -168,3 +168,353 @@ Se identifican tres situaciones críticas de acoplamiento presentes en la implem
 | **1** | **Catálogo y Stock unificados en `Producto.js`** | Contención de escritura/lectura en la misma entidad de BD; imposibilidad de escalar lecturas comerciales de forma independiente a las reservas transaccionales. | Dividir en dos servicios independientes: `Catalog Service` y `Inventory Service`, vinculados únicamente por el `codigo` de producto. |
 | **2** | **Lógica de Concurrencia (Redis Lock) embebida en endpoint HTTP** | Mezcla de infraestructura con lógica de presentación; si cambia la tecnología de locking se rompe la API REST; duplica lógica para futuros casos de uso. | Encapsular Redis Lock como detalle privado de persistencia dentro de `Inventory Service`, exponiendo un endpoint REST limpio `POST /inventory/reservas`. |
 | **3** | **Dependencia circular y acoplamiento con protocolo Raft** | Interdependencia entre arranque del servidor Express y el estado del cluster distribuido; caídas en cascada; imposibilidad de probar rutas aisladas. | Procesos Node.js autónomos por microservicio con ciclo de vida independiente y comunicación externa vía HTTP REST. |
+
+
+---
+
+## 8. Propuesta de Microservicios
+
+A partir del análisis de responsabilidades y la detección de acoplamientos, se define la descomposición del sistema en **tres microservicios autónomos y altamente cohesivos**, complementados por un **API Gateway** como punto de entrada perimetral:
+
+```mermaid
+graph LR
+    Client([Cliente / Frontend]) --> APIGateway[API Gateway :8080]
+    APIGateway -->|/api/catalog| CatalogSvc[Catalog Service :3001]
+    APIGateway -->|/api/inventory| InventorySvc[Inventory Service :3002]
+    APIGateway -->|/api/orders| OrdersSvc[Orders Service :3003]
+```
+
+### 8.1 Ficha de Definición de cada Microservicio
+
+#### Ficha 1: `Catalog Service` (Servicio de Catálogo)
+- **Nombre:** `Catalog Service`
+- **Responsabilidad principal:** Gestionar el ciclo de vida de la información comercial y descriptiva de los productos (catálogo, categorías, especificaciones técnicas y listas de precios base).
+- **Operaciones:**
+  - Crear, consultar, modificar y dar de baja productos comerciales.
+  - Listado paginado de catálogo con filtros por categoría o rango de precios.
+  - Búsqueda de producto por código único (`codigo`) o ID interno.
+- **Reglas de negocio:**
+  - El código de producto (`codigo`) es único, inmutable y normalizado en mayúsculas.
+  - El precio de venta base debe ser estrictamente $\ge 0$.
+  - El nombre comercial debe tener un mínimo de 2 caracteres.
+  - Si un producto es dado de baja, se realiza borrado lógico (*soft delete*) para preservar la integridad histórica de pedidos pasados.
+- **Datos propios:**
+  - `codigo`, `nombre`, `precio_base`, `categoria`, `descripcion`, `activo`, `createdAt`, `updatedAt`.
+- **Endpoints:**
+  - *Migrados del monolito:*
+    - `GET /api/catalog/products` (reemplaza a `GET /api/productos`).
+    - `GET /api/catalog/products/:code` (reemplaza a `GET /api/productos/:id`).
+    - `POST /api/catalog/products` (reemplaza a `POST /api/productos`).
+    - `PUT /api/catalog/products/:code` (reemplaza a `PUT /api/productos/:id`).
+    - `DELETE /api/catalog/products/:code` (reemplaza a `DELETE /api/productos/:id`).
+  - *Nuevos requeridos:*
+    - `GET /api/catalog/categories` (listado de categorías activas).
+    - `GET /api/catalog/health` (liveness / readiness probe).
+- **Dependencias:**
+  - Ninguna dependencia síncrona hacia otros microservicios. Es un servicio hoja (*leaf service*) autosuficiente.
+- **Fuera de alcance:**
+  - No gestiona cantidades físicas de existencias en almacén ni unidades reservadas (responsabilidad de `Inventory Service`).
+  - No procesa carritos de compra, cobros ni órdenes de clientes (responsabilidad de `Orders Service`).
+- **Justificación:**
+  Aísla el dominio más consultado de la tienda (Read-Heavy). Permite optimizar caching perimetral (Redis / CDN) y realizar campañas de actualización masiva de descripciones o promociones sin generar bloqueos en las bases de datos transaccionales de almacén o facturación.
+
+---
+
+#### Ficha 2: `Inventory Service` (Servicio de Inventario y Stock)
+- **Nombre:** `Inventory Service`
+- **Responsabilidad principal:** Gestionar de forma atómica y consistente el inventario físico, control de existencias, reservas temporales y deducciones de stock ante compras.
+- **Operaciones:**
+  - Inicializar y actualizar stock total de un producto por código.
+  - Consultar existencias físicas disponibles (`stock_disponible`).
+  - Reservar stock con bloqueo atómico durante el proceso de compra.
+  - Confirmar deducción definitiva de stock tras concretar una compra.
+  - Liberar reservas caducadas o canceladas devolviendo las unidades al stock disponible.
+- **Reglas de negocio:**
+  - El stock disponible nunca puede ser menor a cero ($stock\_disponible \ge 0$).
+  - Toda reserva debe estar vinculada a un `reservation_id` o `order_id` con tiempo de expiración (TTL de 10 minutos).
+  - La operación de reserva debe ser atómica (sección crítica protegida con Redis Lock o transacciones atómicas).
+  - Si no hay stock suficiente para satisfacer la cantidad solicitada, la reserva se rechaza íntegramente (política "todo o nada").
+- **Datos propios:**
+  - `product_code`, `stock_total`, `stock_disponible`, `stock_reservado`, `reservas: [{ reservation_id, order_id, cantidad, expira_at, estado }]`.
+- **Endpoints:**
+  - *Migrados del monolito:*
+    - `POST /api/inventory/reserve` (reemplaza y generaliza a `POST /api/productos/:id/reservar`).
+  - *Nuevos requeridos:*
+    - `GET /api/inventory/:product_code` (consulta de existencias y disponibilidad).
+    - `POST /api/inventory/:product_code/stock` (ingreso o ajuste de mercadería en almacén).
+    - `POST /api/inventory/confirm` (deducción definitiva del stock reservado al pagar).
+    - `POST /api/inventory/release` (liberación de reserva por cancelación o expiración).
+    - `GET /api/inventory/health` (diagnóstico de salud del servicio e instancia de Redis).
+- **Dependencias:**
+  - Persistencia propia en MongoDB y motor de exclusión mutua Redis en memoria para locks y conteo atómico. No depende de otros microservicios de negocio.
+- **Fuera de alcance:**
+  - No gestiona nombres, imágenes, categorías ni precios de los artículos (responsabilidad de `Catalog Service`).
+  - No gestiona la facturación ni el cobro de la compra (responsabilidad de `Orders Service`).
+- **Justificación:**
+  Convierte una sección crítica vulnerable a condiciones de carrera en un componente especializado de alta concurrencia. Al separar el stock del catálogo, las operaciones transaccionales de alta frecuencia de escritura no compiten con las lecturas masivas del catálogo comercial.
+
+---
+
+#### Ficha 3: `Orders Service` (Servicio de Pedidos y Órdenes)
+- **Nombre:** `Orders Service`
+- **Responsabilidad principal:** Orquestar y registrar el ciclo de vida completo de las órdenes de compra de los usuarios, coordinando las validaciones comerciales y las reservas operativas.
+- **Operaciones:**
+  - Crear una nueva orden de compra en estado `PENDING`.
+  - Consultar órdenes por ID de orden o por ID de cliente.
+  - Confirmar una orden tras el pago exitoso (`CONFIRMED`).
+  - Cancelar una orden por pago fallido o decisión del cliente (`CANCELLED`).
+  - Listar el historial de compras con trazabilidad temporal.
+- **Reglas de negocio:**
+  - Toda orden requiere al menos un ítem con cantidad entera $> 0$.
+  - El precio unitario de cada ítem se congela al momento de crear la orden consultando el precio oficial en `Catalog Service` (inmutabilidad contractual).
+  - Para pasar a estado `CONFIRMED`, debe contar previamente con una confirmación exitosa de reserva por parte de `Inventory Service`.
+  - Si la reserva de inventario es rechazada por falta de stock, la orden pasa a estado `REJECTED_OUT_OF_STOCK` de manera automática.
+- **Datos propios:**
+  - `order_id`, `customer_id`, `items: [{ product_code, cantidad, precio_unitario, subtotal }]`, `total`, `reservation_id`, `estado` (`PENDING`, `CONFIRMED`, `CANCELLED`, `REJECTED`), `timestamps`.
+- **Endpoints:**
+  - *Nuevos (creados para formalizar el dominio comercial de compras):*
+    - `POST /api/orders` (crea una orden y orquesta reserva).
+    - `GET /api/orders/:order_id` (consulta estado y detalle de una orden).
+    - `GET /api/orders/customer/:customer_id` (historial de pedidos del cliente).
+    - `POST /api/orders/:order_id/confirm` (confirma la orden y solicita deducción de stock).
+    - `POST /api/orders/:order_id/cancel` (cancela la orden y solicita liberación de reserva).
+    - `GET /api/orders/health` (liveness / readiness probe).
+- **Dependencias:**
+  - `Catalog Service`: Para verificar existencia de los códigos y obtener el precio vigente.
+  - `Inventory Service`: Para solicitar la reserva atómica de existencias y confirmar/liberar el stock.
+- **Fuera de alcance:**
+  - No modifica directamente los atributos de los productos ni sus precios (propiedad de `Catalog Service`).
+  - No altera directamente los contadores de stock ni almacena existencias en bodegas (propiedad de `Inventory Service`).
+- **Justificación:**
+  Desacopla la lógica de proceso de negocio (checkout, estados de orden, totales financieros) del mantenimiento del catálogo y del almacén. Permite introducir nuevas reglas comerciales (descuentos, promociones, múltiples medios de pago) sin modificar los servicios de catálogo o inventario.
+
+---
+
+### 8.2 Tabla General de Responsabilidades Consolidada
+
+| Microservicio | Responsabilidad de Negocio | Datos Administrados | Funciones Principales | Dependencias Externas |
+| :--- | :--- | :--- | :--- | :--- |
+| **Catalog Service** | Gestión descriptiva y comercial de productos y precios de lista. | Artículos, códigos, nombres, categorías, especificaciones, precios base. | CRUD de productos, búsquedas por categoría, catálogo público. | Ninguna (Servicio Hoja). |
+| **Inventory Service** | Control de existencias físicas en almacén, reservas y concurrencia. | Stock total, disponible, reservado y registro de bloqueos activos. | Consulta de disponibilidad, reservas atómicas, confirmación y liberación de stock. | Redis (interno para locks/exclusión mutua). |
+| **Orders Service** | Orquestación del proceso de compra y ciclo de vida de pedidos. | Órdenes de compra, clientes, líneas de pedido, estados y montos totales. | Creación de pedidos, cálculo de totales, coordinación de reservas y cancelación. | `Catalog Service` (precios) e `Inventory Service` (reservas). |
+
+---
+
+## 9. Propiedad y Acceso a los Datos
+
+### 9.1 Principio de Aislamiento: Database-per-Service
+De acuerdo con las mejores prácticas de microservicios y las directivas del TP5:
+> **REGLA DE ORO:** Ningún microservicio tiene acceso directo a la base de datos de otro microservicio. Cualquier lectura o modificación requerida debe canalizarse a través de las APIs públicas REST expuestas por el servicio propietario del dato.
+
+Cada microservicio dispone de su propia persistencia aislada:
+- `Catalog Service`: Base de datos MongoDB `db_catalog`.
+- `Inventory Service`: Base de datos MongoDB `db_inventory` + Instancia Redis (`cache/locks`).
+- `Orders Service`: Base de datos MongoDB `db_orders`.
+
+### 9.2 Matriz de Propiedad y Acceso a los Datos
+
+| Dato / Recurso | Servicio Propietario | Quién puede consultarlo | Quién puede modificarlo | Forma de Acceso Autorizada |
+| :--- | :--- | :--- | :--- | :--- |
+| **Ficha de Producto** (nombre, descripción, categoría) | **Catalog Service** | Público, Clientes, `Orders Service`, `Inventory Service`. | Únicamente `Catalog Service` (rol Administrador). | HTTP REST público: `GET /api/catalog/products/:code`. |
+| **Precio Oficial de Lista** | **Catalog Service** | `Orders Service`, Clientes, Frontend. | Únicamente `Catalog Service`. | HTTP REST: `GET /api/catalog/products/:code`. |
+| **Stock Físico y Disponible** | **Inventory Service** | `Orders Service`, `Catalog Service` (para badges de stock), Clientes. | Únicamente `Inventory Service` (mediante reposiciones o consumo de reservas). | HTTP REST: `GET /api/inventory/:code`. |
+| **Reservas Temporales de Stock** | **Inventory Service** | `Orders Service`. | Únicamente `Inventory Service` a solicitud de `Orders Service`. | HTTP REST: `POST /api/inventory/reserve` y `POST /api/inventory/release`. |
+| **Cabecera y Detalle de Orden** | **Orders Service** | Cliente propietario, Administrador. | Únicamente `Orders Service`. | HTTP REST: `POST /api/orders`, `GET /api/orders/:id`. |
+| **Estado de la Orden** (`PENDING`, `CONFIRMED`, `CANCELLED`) | **Orders Service** | Clientes, Sistemas de Pago / Logística. | Únicamente `Orders Service`. | HTTP REST: `POST /api/orders/:id/confirm`. |
+
+---
+
+## 10. Comunicación entre Microservicios
+
+### 10.1 Matriz de Comunicaciones Inter-Servicio (HTTP/REST)
+
+| Origen | Destino | Necesidad de Negocio | Método / Endpoint | Datos Intercambiados | Respuesta Esperada |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **API Gateway** | **Catalog Service** | Enrutamiento de consultas de catálogo de usuarios. | `GET /api/catalog/products` | Headers HTTP, Query params (categoría, página). | `200 OK`: Lista de productos con fichas comerciales. |
+| **Orders Service** | **Catalog Service** | Validar existencia de productos y obtener el precio unitario oficial al armar una orden. | `GET /api/catalog/products/:code` | URL param `code`. | `200 OK`: `{ code, name, price, active: true }`<br/>`404 Not Found` si el ítem no existe. |
+| **Orders Service** | **Inventory Service** | Reservar las unidades necesarias antes de aceptar el pedido del cliente. | `POST /api/inventory/reserve` | Body: `{ order_id, items: [{ code, qty }] }` | `200 OK`: `{ reservation_id, status: 'RESERVED' }`<br/>`409 Conflict`: `{ error: 'INSUFFICIENT_STOCK' }`. |
+| **Orders Service** | **Inventory Service** | Confirmar la deducción definitiva de stock tras el pago exitoso de la orden. | `POST /api/inventory/confirm` | Body: `{ reservation_id, order_id }` | `200 OK`: `{ status: 'CONFIRMED', stock_deducted: true }`. |
+| **Orders Service** | **Inventory Service** | Liberar las unidades reservadas si la orden se cancela o falla el pago. | `POST /api/inventory/release` | Body: `{ reservation_id, reason }` | `200 OK`: `{ status: 'RELEASED' }`. |
+
+### 10.2 Análisis Crítico de las Decisiones de Comunicación
+
+1. **¿Es realmente necesario que un servicio conozca al otro?**
+   - `Catalog Service` e `Inventory Service` son totalmente independientes entre sí: ninguno de los dos conoce la existencia del otro ni de `Orders Service`.
+   - `Orders Service` únicamente conoce la interfaz pública HTTP de Catálogo (para verificar precios) y de Inventario (para reservar stock). Esta relación es estrictamente necesaria para garantizar la consistencia del pedido sin compartir bases de datos.
+2. **¿Se está duplicando una regla de negocio que debería tener un único propietario?**
+   - **No.** La regla de cálculo de disponibilidad y deducción reside exclusivamente en `Inventory Service`. La regla de fijación del precio de venta reside en `Catalog Service`. `Orders Service` solo consume estos resultados para aplicarlos a la orden de compra.
+3. **¿La información solicitada podría pertenecer al servicio que la necesita?**
+   - No. El stock no puede pertenecer a `Orders Service` porque múltiples clientes compran en paralelo y el stock representa la existencia física en almacén. De igual forma, el precio oficial debe centralizarse en el Catálogo para evitar discrepancias de precios entre distintas órdenes.
+4. **¿El contrato entre servicios puede expresarse sin conocer detalles internos de implementación?**
+   - **Sí.** Todos los contratos se basan en JSON estándar sobre HTTP. `Orders Service` desconoce si `Inventory Service` usa Redis Lock, transacciones de MongoDB o memoria local para garantizar la exclusión mutua; solo le interesa recibir `{ status: 'RESERVED', reservation_id }` o un código `409 Conflict`.
+5. **¿Qué ocurre con el caso de uso si el servicio destino no se encuentra disponible?**
+   - **Si `Catalog Service` no responde:** `Orders Service` aplica política de *Fail-Fast* con timeout breve (2 segundos) y retorna al cliente `503 Service Unavailable` indicando que no se pudo verificar el catálogo, evitando congelar la conexión.
+   - **Si `Inventory Service` no responde:** `Orders Service` no arriesga una sobreventa; rechaza temporalmente la creación del pedido informando al usuario que intente nuevamente en unos instantes. Si la falla ocurre durante la confirmación posterior, se reintenta mediante un mecanismo de reintentos (*retries* con retroceso exponencial).
+
+---
+
+### 10.3 Trazado de Casos de Uso del Sistema
+
+#### Caso de Uso 1: Creación de Pedido con Reserva de Stock (Happy Path)
+Recorrido completo de la operación más importante del negocio:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente as Cliente HTTP / App
+    participant GW as API Gateway (:8080)
+    participant Ord as Orders Service (:3003)
+    participant Cat as Catalog Service (:3001)
+    participant Inv as Inventory Service (:3002)
+
+    Cliente->>GW: POST /api/orders { customer_id: "CLI-1", items: [{ code: "PROD-001", qty: 2 }] }
+    GW->>Ord: POST /orders (Enrutamiento perimetral)
+    
+    rect rgb(240, 248, 255)
+        Note over Ord,Cat: 1. Validación de Precios y Catálogo
+        Ord->>Cat: GET /api/catalog/products/PROD-001
+        Cat-->>Ord: 200 OK { code: "PROD-001", name: "Teclado mecánico", price: 45000, active: true }
+    end
+
+    rect rgb(245, 255, 245)
+        Note over Ord,Inv: 2. Reserva Atómica de Stock
+        Ord->>Inv: POST /api/inventory/reserve { order_id: "ORD-99", items: [{ code: "PROD-001", qty: 2 }] }
+        Note over Inv: Adquiere Lock Redis<br/>Verifica stock >= 2<br/>stock_disp -= 2, stock_res += 2<br/>Libera Lock
+        Inv-->>Ord: 200 OK { reservation_id: "RES-501", status: "RESERVED" }
+    end
+
+    rect rgb(255, 250, 240)
+        Note over Ord: 3. Persistencia de la Orden
+        Note over Ord: Calcula total: 45000 * 2 = 90000<br/>Guarda en db_orders con estado 'PENDING'
+        Ord-->>GW: 201 Created { order_id: "ORD-99", total: 90000, status: "PENDING", reservation_id: "RES-501" }
+    end
+
+    GW-->>Cliente: 201 Created { order_id: "ORD-99", total: 90000, status: "PENDING" }
+```
+
+- **Quién inicia:** El cliente enviando el payload de compra.
+- **Quién toma las decisiones:**
+  - `Catalog Service` valida que el producto existe y está activo.
+  - `Inventory Service` decide si hay existencias suficientes mediante exclusión mutua atómica.
+  - `Orders Service` consolida el total inmutable y fija el estado de la orden.
+- **Qué datos se consultan:** Ficha del producto y precio oficial (`Catalog Service`), existencias en almacén (`Inventory Service`).
+- **Quién modifica el estado:**
+  - `Inventory Service` incrementa el stock reservado y decrementa el stock disponible en `db_inventory`.
+  - `Orders Service` crea el documento de orden en `db_orders`.
+
+---
+
+#### Caso de Uso 2: Consulta Consolidada de Ficha de Producto con Estado de Stock
+Recorrido para presentar a un usuario el detalle de un artículo junto con su disponibilidad:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente as Navegador / Frontend
+    participant GW as API Gateway (:8080)
+    participant Cat as Catalog Service (:3001)
+    participant Inv as Inventory Service (:3002)
+
+    Cliente->>GW: GET /api/products/PROD-001
+    GW->>Cat: GET /api/catalog/products/PROD-001
+    Cat-->>GW: 200 OK { code: "PROD-001", nombre: "Teclado mecánico", precio: 45000, categoria: "Periféricos" }
+    
+    GW->>Inv: GET /api/inventory/PROD-001
+    Inv-->>GW: 200 OK { code: "PROD-001", stock_disponible: 8, disponible_para_venta: true }
+    
+    Note over GW: Agrega la información descriptiva y de disponibilidad
+    GW-->>Cliente: 200 OK { code: "PROD-001", nombre: "Teclado mecánico", precio: 45000, stock: 8, disponible: true }
+```
+
+- **Quién inicia:** El usuario al ingresar a la ficha de producto.
+- **Quién toma las decisiones:** El API Gateway o BFF (*Backend for Frontend*) solicita concurrentemente los datos al Catálogo y al Inventario, componiendo una respuesta limpia para la interfaz.
+- **Qué datos se consultan:** Atributos descriptivos desde `db_catalog` y existencias en tiempo real desde `db_inventory`.
+- **Quién modifica el estado:** Ninguno (operación pura de lectura idempotente).
+
+---
+
+## 11. Diagrama de Arquitectura del Sistema Propuesto
+
+```mermaid
+flowchart TD
+    subgraph Clients ["Clientes y Consumidores"]
+        Web["Navegador Web / Panel Admin"]
+        Mobile["App Móvil / Postman / cURL"]
+    end
+
+    subgraph Perimeter ["Capa Perimetral y Enrutamiento"]
+        GW["API Gateway / Reverse Proxy<br/>HTTP :8080<br/>- Enrutamiento por prefijo de ruta<br/>- Terminación SSL/TLS<br/>- CORS y Rate Limiting"]
+    end
+
+    subgraph Microservices ["Capa de Microservicios Independientes"]
+        
+        subgraph SvcCatalog ["1. Catalog Service"]
+            CatApp["Catalog Microservice<br/>Node.js + Express (:3001)<br/>Responsabilidad: Fichas y Precios"]
+            CatDB[("MongoDB Propia<br/>db_catalog<br/>Col: products, categories")]
+            CatApp -->|Persistencia Exclusiva| CatDB
+        end
+
+        subgraph SvcInventory ["2. Inventory Service"]
+            InvApp["Inventory Microservice<br/>Node.js + Express (:3002)<br/>Responsabilidad: Stock y Reservas"]
+            InvDB[("MongoDB Propia<br/>db_inventory<br/>Col: stock, reservations")]
+            InvRedis[("Redis / Memurai (:6379)<br/>Locks Distribuidos de Exclusión Mutua<br/>TTL de Reservas")]
+            InvApp -->|Persistencia Exclusiva| InvDB
+            InvApp -->|Locks & Atomics| InvRedis
+        end
+
+        subgraph SvcOrders ["3. Orders Service"]
+            OrdApp["Orders Microservice<br/>Node.js + Express (:3003)<br/>Responsabilidad: Pedidos y Checkout"]
+            OrdDB[("MongoDB Propia<br/>db_orders<br/>Col: orders, order_items")]
+            OrdApp -->|Persistencia Exclusiva| OrdDB
+        end
+
+    end
+
+    %% Flujos de Clientes a Gateway
+    Web -->|HTTP / HTTPS| GW
+    Mobile -->|HTTP / HTTPS| GW
+
+    %% Flujos de Gateway a Microservicios
+    GW -->|/api/catalog/*| CatApp
+    GW -->|/api/inventory/*| InvApp
+    GW -->|/api/orders/*| OrdApp
+
+    %% Comunicaciones Inter-Servicio síncronas HTTP REST
+    OrdApp -->|HTTP GET /catalog/products/:code<br/>(Consulta precio oficial)| CatApp
+    OrdApp -->|HTTP POST /inventory/reserve<br/>(Reserva atómica de stock)| InvApp
+    OrdApp -.->|HTTP POST /inventory/confirm o /release<br/>(Liquidación final de reserva)| InvApp
+
+    classDef serviceNode fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef dbNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef gwNode fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    class CatApp,InvApp,OrdApp serviceNode;
+    class CatDB,InvDB,InvRedis,OrdDB dbNode;
+    class GW gwNode;
+```
+
+---
+
+## 12. Validación de los Límites Propuestos (Checklist)
+
+A continuación se evalúa la arquitectura propuesta contrastándola con los 9 criterios obligatorios de la consigna:
+
+- [x] **1. Puede explicarse su responsabilidad principal en una frase clara:**
+  - *Catalog Service:* "Gestionar el catálogo comercial de artículos, especificaciones y precios de lista."
+  - *Inventory Service:* "Garantizar la consistencia y disponibilidad física del stock en almacén mediante reservas atómicas."
+  - *Orders Service:* "Coordinar el ciclo de vida de los pedidos de clientes desde su intención hasta su confirmación o cancelación."
+- [x] **2. Agrupa reglas de negocio relacionadas entre sí:**
+  - Cada servicio concentra las validaciones de su respectivo dominio (inmutabilidad de códigos en catálogo, no negatividad de stock y exclusión mutua en inventario, cálculo de totales y congelamiento de precios en órdenes).
+- [x] **3. Posee un conjunto de datos o decisiones sobre los cuales es responsable:**
+  - *Catalog* es el único que decide qué se vende y a qué precio; *Inventory* es el único que decide si hay stock; *Orders* es el único que decide si una orden es válida o rechazada.
+- [x] **4. No fue creado únicamente porque existe una tabla, entidad o controlador con ese nombre:**
+  - La división surge de la separación de dominios de negocio funcionales (Catálogo vs. Logística de Almacén vs. Facturación/Ventas), solucionando la sobrecarga que existía sobre la entidad unificada `Producto`.
+- [x] **5. Su interfaz pública puede definirse sin exponer detalles internos:**
+  - Las APIs operan mediante DTOs limpios en formato JSON. Ningún servicio expone esquemas internos de Mongoose, conexiones a bases de datos ni el uso de Redis.
+- [x] **6. Puede modificarse internamente sin exigir cambios simultáneos en todos los demás servicios:**
+  - Si `Inventory Service` reemplaza Redis por bloqueos en memoria o en Postgres, ni `Catalog` ni `Orders` se ven afectados en absoluto mientras se respete el contrato REST.
+- [x] **7. No duplica reglas de negocio cuya autoridad pertenece a otro servicio:**
+  - `Orders Service` no calcula disponibilidad ni resta stock por su cuenta; delega esa autoridad estrictamente a `Inventory Service`.
+- [x] **8. Las dependencias con otros servicios son necesarias y están justificadas:**
+  - `Catalog` e `Inventory` tienen cero dependencias entre sí. La única dependencia es de `Orders` hacia ellos, imprescindible para conformar un pedido comercialmente válido.
+- [x] **9. El grupo puede explicar qué responsabilidades quedan explícitamente fuera del servicio:**
+  - En cada una de las 3 fichas de la Sección 8.1 se detalló exhaustivamente el campo *"Fuera de alcance"*.
