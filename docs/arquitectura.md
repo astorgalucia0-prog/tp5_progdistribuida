@@ -447,47 +447,47 @@ flowchart TD
         Mobile["App Móvil / Postman / cURL"]
     end
 
-    subgraph Perimeter ["Capa Perimetral y Enrutamiento"]
-        GW["API Gateway / Reverse Proxy<br/>HTTP :8080<br/>- Enrutamiento por prefijo de ruta<br/>- Terminación SSL/TLS<br/>- CORS y Rate Limiting"]
+    subgraph Perimeter ["Capa Perimetral"]
+        GW["API Gateway / Reverse Proxy<br/>HTTP :8080<br/>Enrutamiento por prefijo de ruta"]
     end
 
-    subgraph Microservices ["Capa de Microservicios Independientes"]
+    subgraph Microservices ["Microservicios Autónomos"]
         
-        subgraph SvcCatalog ["1. Catalog Service"]
-            CatApp["Catalog Microservice<br/>Node.js + Express (:3001)<br/>Responsabilidad: Fichas y Precios"]
-            CatDB[("MongoDB Propia<br/>db_catalog<br/>Col: products, categories")]
+        subgraph SvcCatalog ["Catalog Service (:3001)"]
+            CatApp["Catalog Microservice<br/>Node.js + Express<br/>Responsabilidad: Fichas y Precios"]
+            CatDB[("MongoDB Propia<br/>db_catalog")]
             CatApp -->|Persistencia Exclusiva| CatDB
         end
 
-        subgraph SvcInventory ["2. Inventory Service"]
-            InvApp["Inventory Microservice<br/>Node.js + Express (:3002)<br/>Responsabilidad: Stock y Reservas"]
-            InvDB[("MongoDB Propia<br/>db_inventory<br/>Col: stock, reservations")]
-            InvRedis[("Redis / Memurai (:6379)<br/>Locks Distribuidos de Exclusión Mutua<br/>TTL de Reservas")]
+        subgraph SvcInventory ["Inventory Service (:3002)"]
+            InvApp["Inventory Microservice<br/>Node.js + Express<br/>Responsabilidad: Stock y Reservas"]
+            InvDB[("MongoDB Propia<br/>db_inventory")]
+            InvRedis[("Redis / Memurai (:6379)<br/>Locks Distribuidos & TTL")]
             InvApp -->|Persistencia Exclusiva| InvDB
             InvApp -->|Locks & Atomics| InvRedis
         end
 
-        subgraph SvcOrders ["3. Orders Service"]
-            OrdApp["Orders Microservice<br/>Node.js + Express (:3003)<br/>Responsabilidad: Pedidos y Checkout"]
-            OrdDB[("MongoDB Propia<br/>db_orders<br/>Col: orders, order_items")]
+        subgraph SvcOrders ["Orders Service (:3003)"]
+            OrdApp["Orders Microservice<br/>Node.js + Express<br/>Responsabilidad: Pedidos y Checkout"]
+            OrdDB[("MongoDB Propia<br/>db_orders")]
             OrdApp -->|Persistencia Exclusiva| OrdDB
         end
 
     end
 
     %% Flujos de Clientes a Gateway
-    Web -->|HTTP / HTTPS| GW
-    Mobile -->|HTTP / HTTPS| GW
+    Web -->|HTTP| GW
+    Mobile -->|HTTP| GW
 
     %% Flujos de Gateway a Microservicios
-    GW -->|/api/catalog/*| CatApp
-    GW -->|/api/inventory/*| InvApp
-    GW -->|/api/orders/*| OrdApp
+    GW -->|"/api/catalog/*"| CatApp
+    GW -->|"/api/inventory/*"| InvApp
+    GW -->|"/api/orders/*"| OrdApp
 
     %% Comunicaciones Inter-Servicio síncronas HTTP REST
-    OrdApp -->|HTTP GET /catalog/products/:code<br/>(Consulta precio oficial)| CatApp
-    OrdApp -->|HTTP POST /inventory/reserve<br/>(Reserva atómica de stock)| InvApp
-    OrdApp -.->|HTTP POST /inventory/confirm o /release<br/>(Liquidación final de reserva)| InvApp
+    OrdApp -->|"HTTP GET /catalog/products/:code<br/>(Consulta precio oficial)"| CatApp
+    OrdApp -->|"HTTP POST /inventory/reserve<br/>(Reserva atómica de stock)"| InvApp
+    OrdApp -.->|"HTTP POST /inventory/confirm<br/>(Deducción definitiva de stock)"| InvApp
 
     classDef serviceNode fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
     classDef dbNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;

@@ -46,14 +46,14 @@ flowchart TD
     Mobile -->|HTTP| GW
 
     %% Flujos de Gateway a Microservicios
-    GW -->|/api/catalog/*| CatApp
-    GW -->|/api/inventory/*| InvApp
-    GW -->|/api/orders/*| OrdApp
+    GW -->|"/api/catalog/*"| CatApp
+    GW -->|"/api/inventory/*"| InvApp
+    GW -->|"/api/orders/*"| OrdApp
 
     %% Comunicaciones Inter-Servicio síncronas HTTP REST
-    OrdApp -->|HTTP GET /catalog/products/:code<br/>(Consulta precio oficial)| CatApp
-    OrdApp -->|HTTP POST /inventory/reserve<br/>(Reserva atómica de stock)| InvApp
-    OrdApp -.->|HTTP POST /inventory/confirm<br/>(Deducción definitiva de stock)| InvApp
+    OrdApp -->|"HTTP GET /catalog/products/:code<br/>(Consulta precio oficial)"| CatApp
+    OrdApp -->|"HTTP POST /inventory/reserve<br/>(Reserva atómica de stock)"| InvApp
+    OrdApp -.->|"HTTP POST /inventory/confirm<br/>(Deducción definitiva de stock)"| InvApp
 
     classDef serviceNode fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
     classDef dbNode fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
