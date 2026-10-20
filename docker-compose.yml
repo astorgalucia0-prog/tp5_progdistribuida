@@ -1,0 +1,184 @@
+services:
+  # ============================================================================
+  # INFRAESTRUCTURA Y PERSISTENCIA (Database-per-Service & Concurrencia)
+  # ============================================================================
+  mongodb:
+    image: mongo:7.0
+    container_name: tp6-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: tp6-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservices-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ============================================================================
+  # MICROSERVICIOS DE LA APLICACIÓN DISTRIBUIDA
+  # ============================================================================
+  catalog-service:
+    build:
+      context: ./services/catalog-service
+      dockerfile: Dockerfile
+    container_name: tp6-catalog-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3001
+      API_PREFIX: /api/catalog
+      MONGODB_URI: mongodb://mongodb:27017/db_catalog
+      LOG_LEVEL: info
+    ports:
+      - "3001:3001"
+    networks:
+      - microservices-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  inventory-service:
+    build:
+      context: ./services/inventory-service
+      dockerfile: Dockerfile
+    container_name: tp6-inventory-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3002
+      API_PREFIX: /api/inventory
+      MONGODB_URI: mongodb://mongodb:27017/db_inventory
+      REDIS_URL: redis://redis:6379
+      LOCK_TTL_MS: 5000
+      RESERVATION_TTL_SECONDS: 600
+      LOG_LEVEL: info
+    ports:
+      - "3002:3002"
+    networks:
+      - microservices-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  orders-service:
+    build:
+      context: ./services/orders-service
+      dockerfile: Dockerfile
+    container_name: tp6-orders-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3003
+      API_PREFIX: /api/orders
+      MONGODB_URI: mongodb://mongodb:27017/db_orders
+      CATALOG_SERVICE_URL: http://catalog-service:3001
+      INVENTORY_SERVICE_URL: http://inventory-service:3002
+      REQUEST_TIMEOUT_MS: 3000
+      LOG_LEVEL: info
+    ports:
+      - "3003:3003"
+    networks:
+      - microservices-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      catalog-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================================
+  # CAPA PERIMETRAL: API GATEWAY
+  # ============================================================================
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: tp6-api-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8080
+      CATALOG_SERVICE_URL: http://catalog-service:3001
+      INVENTORY_SERVICE_URL: http://inventory-service:3002
+      ORDERS_SERVICE_URL: http://orders-service:3003
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    networks:
+      - microservices-net
+    depends_on:
+      catalog-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      orders-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# ==============================================================================
+# RED INTERNA
+# ==============================================================================
+networks:
+  microservices-net:
+    driver: bridge
+
+# ==============================================================================
+# VOLÚMENES PERSISTENTES
+# ==============================================================================
+volumes:
+  mongo_data:
+    driver: local
+  redis_data:
+    driver: local

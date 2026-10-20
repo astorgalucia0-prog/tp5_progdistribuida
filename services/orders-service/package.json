@@ -1,0 +1,23 @@
+{
+  "name": "orders-service",
+  "version": "1.0.0",
+  "description": "Orders Microservice - Orquestación de compras, cálculo de totales y ciclo de vida de pedidos",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.22.2",
+    "mongoose": "^9.9.4",
+    "swagger-ui-express": "^5.0.1",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

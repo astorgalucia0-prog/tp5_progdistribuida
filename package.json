@@ -11,7 +11,12 @@
     "node3": "node scripts/start-node.js node3",
     "dev:node1": "nodemon scripts/start-node.js node1",
     "dev:node2": "nodemon scripts/start-node.js node2",
-    "dev:node3": "nodemon scripts/start-node.js node3"
+    "dev:node3": "nodemon scripts/start-node.js node3",
+    "test:e2e": "node scripts/test-e2e.js",
+    "seed": "node scripts/seed-tp6.js",
+    "compose:up": "docker compose up --build -d",
+    "compose:down": "docker compose down",
+    "compose:logs": "docker compose logs -f"
   },
   "dependencies": {
     "dotenv": "^17.4.2",
