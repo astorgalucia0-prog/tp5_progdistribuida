@@ -22,18 +22,21 @@ app.use((req, res, next) => {
 app.get('/health', async (req, res) => {
   const checks = {
     gateway: 'ok',
+    auth: 'unknown',
     catalog: 'unknown',
     inventory: 'unknown',
     orders: 'unknown'
   };
 
   try {
-    const [catRes, invRes, ordRes] = await Promise.allSettled([
+    const [authRes, catRes, invRes, ordRes] = await Promise.allSettled([
+      fetch(`${config.authServiceUrl}/health`, { signal: AbortSignal.timeout(1000) }),
       fetch(`${config.catalogServiceUrl}/health`, { signal: AbortSignal.timeout(1000) }),
       fetch(`${config.inventoryServiceUrl}/health`, { signal: AbortSignal.timeout(1000) }),
       fetch(`${config.ordersServiceUrl}/health`, { signal: AbortSignal.timeout(1000) })
     ]);
 
+    checks.auth = authRes.status === 'fulfilled' && authRes.value.ok ? 'healthy' : 'unreachable';
     checks.catalog = catRes.status === 'fulfilled' && catRes.value.ok ? 'healthy' : 'unreachable';
     checks.inventory = invRes.status === 'fulfilled' && invRes.value.ok ? 'healthy' : 'unreachable';
     checks.orders = ordRes.status === 'fulfilled' && ordRes.value.ok ? 'healthy' : 'unreachable';
@@ -98,6 +101,23 @@ app.get('/api/products/:code', async (req, res, next) => {
   }
 });
 
+// Proxy hacia Auth Service (/api/auth/*)
+app.use(
+  '/api/auth',
+  proxy(config.authServiceUrl, {
+    proxyReqPathResolver: (req) => `/api/auth${req.url}`,
+    proxyErrorHandler: (err, res, next) => {
+      logger.error(`[Gateway Proxy Error] Fallo al reenviar a Auth Service: ${err.message}`);
+      res.status(503).json({
+        service: config.serviceName,
+        error: 'ServiceUnavailable',
+        message: 'Auth Service no se encuentra disponible',
+        target: config.authServiceUrl
+      });
+    }
+  })
+);
+
 // Proxy hacia Catalog Service (/api/catalog/*)
 app.use(
   '/api/catalog',
@@ -152,9 +172,13 @@ app.use(
 // Ruta Raíz descriptiva
 app.get('/', (req, res) => {
   res.json({
-    service: 'API Gateway - TP6 Microservicios',
+    service: 'API Gateway - TP7 Microservicios con Seguridad JWT',
     endpoints: {
       health: '/health',
+      auth_register: '/api/auth/register',
+      auth_login: '/api/auth/login',
+      auth_me: '/api/auth/me',
+      auth_swagger: `${config.authServiceUrl}/api-docs`,
       catalog: '/api/catalog/products',
       catalog_swagger: `${config.catalogServiceUrl}/api-docs`,
       inventory: '/api/inventory/:code',

@@ -4,7 +4,7 @@ services:
   # ============================================================================
   mongodb:
     image: mongo:7.0
-    container_name: tp6-mongodb
+    container_name: tp7-mongodb
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -21,7 +21,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: tp6-redis
+    container_name: tp7-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -37,13 +37,47 @@ services:
       start_period: 5s
 
   # ============================================================================
+  # MICROSERVICIO DE IDENTIDAD Y SEGURIDAD JWT (TP7)
+  # ============================================================================
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: tp7-auth-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3004
+      API_PREFIX: /api/auth
+      MONGODB_URI: mongodb://mongodb:27017/db_auth
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      JWT_ISSUER: ${JWT_ISSUER:-uch-distributed-auth}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      LOG_LEVEL: info
+    ports:
+      - "3004:3004"
+    networks:
+      - microservices-net
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3004/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ============================================================================
   # MICROSERVICIOS DE LA APLICACIÓN DISTRIBUIDA
   # ============================================================================
   catalog-service:
     build:
       context: ./services/catalog-service
       dockerfile: Dockerfile
-    container_name: tp6-catalog-service
+    container_name: tp7-catalog-service
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -51,6 +85,7 @@ services:
       PORT: 3001
       API_PREFIX: /api/catalog
       MONGODB_URI: mongodb://mongodb:27017/db_catalog
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
       LOG_LEVEL: info
     ports:
       - "3001:3001"
@@ -70,7 +105,7 @@ services:
     build:
       context: ./services/inventory-service
       dockerfile: Dockerfile
-    container_name: tp6-inventory-service
+    container_name: tp7-inventory-service
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -81,6 +116,7 @@ services:
       REDIS_URL: redis://redis:6379
       LOCK_TTL_MS: 5000
       RESERVATION_TTL_SECONDS: 600
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
       LOG_LEVEL: info
     ports:
       - "3002:3002"
@@ -102,7 +138,7 @@ services:
     build:
       context: ./services/orders-service
       dockerfile: Dockerfile
-    container_name: tp6-orders-service
+    container_name: tp7-orders-service
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -112,6 +148,7 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/db_orders
       CATALOG_SERVICE_URL: http://catalog-service:3001
       INVENTORY_SERVICE_URL: http://inventory-service:3002
+      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
       REQUEST_TIMEOUT_MS: 3000
       LOG_LEVEL: info
     ports:
@@ -139,12 +176,13 @@ services:
     build:
       context: ./services/api-gateway
       dockerfile: Dockerfile
-    container_name: tp6-api-gateway
+    container_name: tp7-api-gateway
     restart: unless-stopped
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 8080
+      AUTH_SERVICE_URL: http://auth-service:3004
       CATALOG_SERVICE_URL: http://catalog-service:3001
       INVENTORY_SERVICE_URL: http://inventory-service:3002
       ORDERS_SERVICE_URL: http://orders-service:3003
@@ -154,6 +192,8 @@ services:
     networks:
       - microservices-net
     depends_on:
+      auth-service:
+        condition: service_healthy
       catalog-service:
         condition: service_healthy
       inventory-service:
