@@ -2,18 +2,24 @@ import { config } from '../config/index.js';
 import logger from '../utils/logger.js';
 
 export class InventoryClient {
-  static async reserve({ order_id, items }) {
+  static async reserve({ order_id, items, token }) {
     const url = `${config.inventoryServiceUrl}/api/inventory/reserve`;
 
     logger.info(`[InventoryClient] Solicitando reserva para orden ${order_id} en: ${url}`);
 
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers,
         body: JSON.stringify({ order_id, items }),
         signal: AbortSignal.timeout(config.requestTimeoutMs)
       });
@@ -51,7 +57,7 @@ export class InventoryClient {
       if (!response.ok) {
         logger.error(`[InventoryClient] Error en Inventory Service (${response.status}): ${JSON.stringify(data)}`);
         const error = new Error(data.message || `Fallo en Inventory Service (${response.statusText})`);
-        error.statusCode = 502;
+        error.statusCode = response.status;
         error.remoteService = 'inventory-service';
         throw error;
       }
@@ -77,18 +83,24 @@ export class InventoryClient {
     }
   }
 
-  static async confirm({ reservation_id, order_id }) {
+  static async confirm({ reservation_id, order_id, token }) {
     const url = `${config.inventoryServiceUrl}/api/inventory/confirm`;
 
     logger.info(`[InventoryClient] Confirmando reserva ${reservation_id} en: ${url}`);
 
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers,
         body: JSON.stringify({ reservation_id, order_id }),
         signal: AbortSignal.timeout(config.requestTimeoutMs)
       });
@@ -96,7 +108,7 @@ export class InventoryClient {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const error = new Error(data.message || 'Error al confirmar reserva en inventario.');
-        error.statusCode = response.status === 404 ? 404 : 502;
+        error.statusCode = response.status === 404 ? 404 : response.status;
         error.remoteService = 'inventory-service';
         throw error;
       }
@@ -116,18 +128,24 @@ export class InventoryClient {
     }
   }
 
-  static async release({ reservation_id, reason }) {
+  static async release({ reservation_id, reason, token }) {
     const url = `${config.inventoryServiceUrl}/api/inventory/release`;
 
     logger.info(`[InventoryClient] Liberando reserva ${reservation_id} en: ${url}`);
 
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers,
         body: JSON.stringify({ reservation_id, reason }),
         signal: AbortSignal.timeout(config.requestTimeoutMs)
       });
@@ -135,7 +153,7 @@ export class InventoryClient {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         const error = new Error(data.message || 'Error al liberar reserva en inventario.');
-        error.statusCode = response.status === 404 ? 404 : 502;
+        error.statusCode = response.status === 404 ? 404 : response.status;
         error.remoteService = 'inventory-service';
         throw error;
       }

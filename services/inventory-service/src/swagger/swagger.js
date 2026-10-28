@@ -5,7 +5,7 @@ const swaggerDocument = {
   info: {
     title: 'Inventory Service API',
     version: '1.0.0',
-    description: 'Documentación OpenAPI del microservicio de Inventario y Control de Existencias'
+    description: 'Documentación OpenAPI del microservicio de Inventario y Control de Existencias con Seguridad RBAC (TP7)'
   },
   servers: [
     {
@@ -13,6 +13,16 @@ const swaggerDocument = {
       description: 'Prefijo API Inventory'
     }
   ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Ingrese el Access Token JWT obtenido en /api/auth/login. Formato: Bearer <token>'
+      }
+    }
+  },
   paths: {
     '/health': {
       get: {
@@ -25,7 +35,7 @@ const swaggerDocument = {
     },
     '/{code}': {
       get: {
-        summary: 'Consulta disponibilidad y existencias físicas de un producto',
+        summary: 'Consulta disponibilidad y existencias físicas de un producto (Público)',
         parameters: [
           { name: 'code', in: 'path', required: true, schema: { type: 'string' }, example: 'PROD-001' }
         ],
@@ -37,7 +47,8 @@ const swaggerDocument = {
     },
     '/reserve': {
       post: {
-        summary: 'Reserva temporal atómica de existencias (con Redis Lock y TTL)',
+        summary: 'Reserva temporal atómica de existencias (Autenticado: USER o ADMIN)',
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -66,6 +77,7 @@ const swaggerDocument = {
         responses: {
           '200': { description: 'Reserva confirmada temporalmente' },
           '400': { description: 'Parámetros inválidos' },
+          '401': { description: 'Token ausente, inválido o expirado (HTTP 401 Unauthorized)' },
           '409': { description: 'Stock insuficiente para satisfacer la reserva' },
           '423': { description: 'Recurso bloqueado concurrentemente' }
         }
@@ -73,7 +85,8 @@ const swaggerDocument = {
     },
     '/confirm': {
       post: {
-        summary: 'Deducción definitiva de stock tras confirmación de compra',
+        summary: 'Deducción definitiva de stock tras confirmación de compra (Autenticado: USER o ADMIN)',
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -91,13 +104,15 @@ const swaggerDocument = {
         },
         responses: {
           '200': { description: 'Stock deducido con éxito' },
+          '401': { description: 'Token ausente, inválido o expirado' },
           '404': { description: 'Reserva no encontrada' }
         }
       }
     },
     '/release': {
       post: {
-        summary: 'Liberación de reserva por cancelación o expiración',
+        summary: 'Liberación de reserva por cancelación o expiración (Autenticado: USER o ADMIN)',
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -115,13 +130,15 @@ const swaggerDocument = {
         },
         responses: {
           '200': { description: 'Reserva liberada' },
+          '401': { description: 'Token ausente, inválido o expirado' },
           '404': { description: 'Reserva no encontrada' }
         }
       }
     },
     '/{code}/stock': {
       post: {
-        summary: 'Ajuste manual o reposición de existencias en almacén',
+        summary: 'Ajuste manual o reposición de existencias en almacén (Restringido: Solo ADMIN)',
+        security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'code', in: 'path', required: true, schema: { type: 'string' }, example: 'PROD-001' }
         ],
@@ -140,7 +157,9 @@ const swaggerDocument = {
         },
         responses: {
           '200': { description: 'Stock actualizado con éxito' },
-          '400': { description: 'Ajuste no permitido o valores negativos' }
+          '400': { description: 'Ajuste no permitido o valores negativos' },
+          '401': { description: 'Token ausente, inválido o expirado (HTTP 401 Unauthorized)' },
+          '403': { description: 'Permisos insuficientes: Requiere rol ADMIN (HTTP 403 Forbidden)' }
         }
       }
     }
@@ -150,4 +169,8 @@ const swaggerDocument = {
 export function setupSwagger(app) {
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
   app.use('/api/inventory/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+  app.get('/api-docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerDocument);
+  });
 }

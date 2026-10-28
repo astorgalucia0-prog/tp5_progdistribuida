@@ -5,7 +5,7 @@ import { InventoryClient } from '../clients/inventoryClient.js';
 import logger from '../utils/logger.js';
 
 export class OrdersService {
-  static async createOrder({ customer_id, items }) {
+  static async createOrder({ customer_id, items, token }) {
     if (!customer_id || typeof customer_id !== 'string') {
       const error = new Error('customer_id es obligatorio');
       error.statusCode = 400;
@@ -51,12 +51,13 @@ export class OrdersService {
       });
     }
 
-    // 2. Paso 2: Solicitar reserva temporal en Inventory Service
+    // 2. Paso 2: Solicitar reserva temporal en Inventory Service (propagando JWT si existe)
     let reservationResult = null;
     try {
       reservationResult = await InventoryClient.reserve({
         order_id: orderId,
-        items: orderItems.map(i => ({ code: i.product_code, qty: i.cantidad }))
+        items: orderItems.map((i) => ({ code: i.product_code, qty: i.cantidad })),
+        token
       });
     } catch (reserveError) {
       // Si la reserva falla por falta de stock (409), registramos la orden como REJECTED
@@ -102,7 +103,7 @@ export class OrdersService {
     return await Order.find({ customer_id: customerId.trim() }).sort({ createdAt: -1 });
   }
 
-  static async confirmOrder(orderId) {
+  static async confirmOrder(orderId, token) {
     const order = await Order.findOne({ order_id: orderId.trim() });
     if (!order) {
       const error = new Error(`Orden ${orderId} no encontrada`);
@@ -116,10 +117,11 @@ export class OrdersService {
       throw error;
     }
 
-    // Confirmar la reserva en Inventory Service
+    // Confirmar la reserva en Inventory Service propagando token
     await InventoryClient.confirm({
       reservation_id: order.reservation_id,
-      order_id: order.order_id
+      order_id: order.order_id,
+      token
     });
 
     order.estado = 'CONFIRMED';
@@ -128,7 +130,7 @@ export class OrdersService {
     return updated;
   }
 
-  static async cancelOrder(orderId, reason = 'USER_CANCELLED') {
+  static async cancelOrder(orderId, reason = 'USER_CANCELLED', token) {
     const order = await Order.findOne({ order_id: orderId.trim() });
     if (!order) {
       const error = new Error(`Orden ${orderId} no encontrada`);
@@ -142,11 +144,12 @@ export class OrdersService {
       throw error;
     }
 
-    // Liberar la reserva en Inventory Service
+    // Liberar la reserva en Inventory Service propagando token
     if (order.reservation_id) {
       await InventoryClient.release({
         reservation_id: order.reservation_id,
-        reason
+        reason,
+        token
       });
     }
 

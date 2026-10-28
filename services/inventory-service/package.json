@@ -12,6 +12,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.9.4",
     "redis": "^6.2.1",
     "swagger-ui-express": "^5.0.1",

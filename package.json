@@ -13,14 +13,18 @@
     "dev:node2": "nodemon scripts/start-node.js node2",
     "dev:node3": "nodemon scripts/start-node.js node3",
     "test:e2e": "node scripts/test-e2e.js",
+    "test:tp7": "node scripts/test-tp7-security.js",
     "seed": "node scripts/seed-tp6.js",
+    "seed:tp7": "node scripts/seed-tp7.js",
     "compose:up": "docker compose up --build -d",
     "compose:down": "docker compose down",
     "compose:logs": "docker compose logs -f"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "dotenv": "^17.4.2",
     "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^9.9.4",
     "redis": "^6.2.1",
     "swagger-ui-express": "^5.0.1",

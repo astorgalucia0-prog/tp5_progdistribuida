@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { OrdersController } from '../controllers/ordersController.js';
+import { authenticateToken, authorizeRoles } from '../middlewares/auth.js';
 
 const router = Router();
+
+// Todas las operaciones de órdenes requieren usuario autenticado (USER o ADMIN)
+router.use(authenticateToken, authorizeRoles('USER', 'ADMIN'));
 
 router.post('/', OrdersController.create);
 router.get('/:order_id', OrdersController.getById);
