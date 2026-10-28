@@ -8,6 +8,7 @@
 
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import { execSync } from 'node:child_process';
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8080';
 const AUTH_URL = process.env.AUTH_SERVICE_URL || `${GATEWAY_URL}/api/auth`;
@@ -391,51 +392,61 @@ async function startSuite() {
   // ESCENARIO L: Inspeccionar persistencia de usuarios (hash bcrypt y no texto plano)
   // ---------------------------------------------------------------------------
   await runScenario('L', 'Inspeccionar persistencia en MongoDB: password almacenado como hash bcrypt', async () => {
-    // Nos conectamos directamente a db_auth para inspeccionar la colección users
-    let conn = null;
+    let userDoc = null;
+
+    // 1. Intentamos consultar directamente al contenedor de MongoDB en Docker (más confiable)
     try {
-      conn = await mongoose.createConnection(MONGODB_URI_AUTH, {
-        serverSelectionTimeoutMS: 4000
-      }).asPromise();
-
-      const userDoc = await conn.collection('users').findOne({ email: testUser.email });
-
-      if (!userDoc) {
-        throw new Error(`Usuario ${testUser.email} no encontrado en la base de datos db_auth.`);
+      const output = execSync(
+        `docker compose exec -T mongodb mongosh --quiet --eval "JSON.stringify(db.getSiblingDB('db_auth').users.findOne({ email: '${testUser.email}' }))"`,
+        { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 6000 }
+      );
+      if (output && output.trim().startsWith('{')) {
+        userDoc = JSON.parse(output.trim());
       }
+    } catch (e) {
+      // Fallback a conexión mongoose si docker CLI no está en path
+    }
 
-      if (!userDoc.passwordHash) {
-        throw new Error('El documento no contiene el campo passwordHash!');
-      }
-
-      // Validar que comience con prefijo bcrypt ($2a$ o $2b$)
-      const isBcrypt = /^\$2[abxy]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(userDoc.passwordHash);
-      if (!isBcrypt) {
-        throw new Error(`El formato del hash no corresponde a bcrypt: ${userDoc.passwordHash}`);
-      }
-
-      // Validar que la contraseña en texto plano no se encuentre almacenada en ninguna propiedad
-      const rawText = JSON.stringify(userDoc);
-      if (rawText.includes(testUser.password)) {
-        throw new Error('VULNERABILIDAD CRÍTICA: Se encontró la contraseña en texto plano dentro del documento persistido!');
-      }
-
-      console.log(`   -> Documento verificado en db_auth:`);
-      console.log(`      ID: ${userDoc._id}`);
-      console.log(`      Email: ${userDoc.email}`);
-      console.log(`      PasswordHash: ${userDoc.passwordHash.slice(0, 15)}... (Formato bcrypt válido)`);
-      console.log(`      Texto plano ausente: VERIFICADO (100% seguro)`);
-    } catch (err) {
-      if (err.message && err.message.includes('ECONNREFUSED')) {
-        console.log(`   ⚠️ MongoDB directo no accesible en host local (${MONGODB_URI_AUTH}); omitiendo chequeo de socket directo.`);
-      } else {
-        throw err;
-      }
-    } finally {
-      if (conn) {
-        await conn.close();
+    // 2. Si no se obtuvo por Docker, probamos conexión Mongoose
+    if (!userDoc) {
+      let conn = null;
+      try {
+        conn = await mongoose.createConnection(MONGODB_URI_AUTH, {
+          serverSelectionTimeoutMS: 3000
+        }).asPromise();
+        userDoc = await conn.db.collection('users').findOne({ email: testUser.email });
+      } catch (err) {
+        // ignore
+      } finally {
+        if (conn) await conn.close();
       }
     }
+
+    if (!userDoc) {
+      throw new Error(`Usuario ${testUser.email} no encontrado en la base de datos db_auth.`);
+    }
+
+    if (!userDoc.passwordHash) {
+      throw new Error('El documento no contiene el campo passwordHash!');
+    }
+
+    // Validar que comience con prefijo bcrypt ($2a$, $2b$, $2y$)
+    const isBcrypt = /^\$2[abxy]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(userDoc.passwordHash);
+    if (!isBcrypt) {
+      throw new Error(`El formato del hash no corresponde a bcrypt: ${userDoc.passwordHash}`);
+    }
+
+    // Validar que la contraseña en texto plano no se encuentre almacenada en ninguna propiedad
+    const rawText = JSON.stringify(userDoc);
+    if (rawText.includes(testUser.password)) {
+      throw new Error('VULNERABILIDAD CRÍTICA: Se encontró la contraseña en texto plano dentro del documento persistido!');
+    }
+
+    console.log(`   -> Documento verificado en db_auth:`);
+    console.log(`      ID: ${userDoc._id}`);
+    console.log(`      Email: ${userDoc.email}`);
+    console.log(`      PasswordHash: ${userDoc.passwordHash.slice(0, 15)}... (Formato bcrypt válido)`);
+    console.log(`      Texto plano ausente: VERIFICADO (100% seguro)`);
   });
 
   // ---------------------------------------------------------------------------
