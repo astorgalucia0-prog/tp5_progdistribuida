@@ -1,6 +1,6 @@
 # Trabajo Práctico N° 7: Autenticación, Autorización y Seguridad con JWT
 **Licenciatura en Sistemas de Información — Programación Distribuida**  
-**Universidad Champagnat — Ciclo Lectivo 2026**
+**Universidad Champagnat**
 
 Repositorio grupal único para la evolución de la arquitectura de microservicios: incorporación de mecanismos de identidad, almacenamiento seguro de credenciales con bcrypt, validación distribuida de tokens JWT, control de acceso basado en roles (RBAC) y autorización por propiedad del recurso.
 
