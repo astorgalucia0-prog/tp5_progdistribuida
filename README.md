@@ -15,7 +15,7 @@ Repositorio grupal único para la evolución de la arquitectura de microservicio
   - **Bustos, Emmanuel**
   - **Lombardo, Damián**
   - **Militello, Santiago**
-- **Docentes de la Cátedra:**
+- **Docentes:**
   - Adriel Álvarez (`alvarezadriel@uch.edu.ar`)
   - Edgardo Cortez (`cortezedgardo@uch.edu.ar`)
 
