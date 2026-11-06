@@ -6,7 +6,7 @@ const swaggerDocument = {
     title: 'Auth Service API - Identidad y Seguridad JWT',
     version: '1.0.0',
     description:
-      'Documentación OpenAPI del microservicio de autenticación, alta de identidades y emisión de tokens JWT (TP7).'
+      'Documentación OpenAPI del microservicio de autenticación, alta de identidades y emisión de tokens JWT (TP7 con hardening).'
   },
   servers: [
     {
@@ -30,9 +30,18 @@ const swaggerDocument = {
         properties: {
           username: { type: 'string', example: 'nuevousuario' },
           email: { type: 'string', example: 'usuario@uch.edu.ar' },
-          password: { type: 'string', example: 'Password123!' },
-          role: { type: 'string', enum: ['USER', 'ADMIN'], example: 'USER' },
+          password: { type: 'string', example: 'PasswordSegura2026!' },
           nombre: { type: 'string', example: 'Juan Pérez' }
+        }
+      },
+      AdminCreateRequest: {
+        type: 'object',
+        required: ['username', 'email', 'password'],
+        properties: {
+          username: { type: 'string', example: 'nuevoadmin' },
+          email: { type: 'string', example: 'nuevoadmin@uch.edu.ar' },
+          password: { type: 'string', example: 'AdminSecure2026!#Distributed' },
+          nombre: { type: 'string', example: 'Nuevo Administrador' }
         }
       },
       LoginRequest: {
@@ -40,7 +49,7 @@ const swaggerDocument = {
         required: ['email', 'password'],
         properties: {
           email: { type: 'string', example: 'admin@uch.edu.ar' },
-          password: { type: 'string', example: 'AdminPassword123!' }
+          password: { type: 'string', example: 'AdminSecure2026!#Distributed' }
         }
       },
       UserResponse: {
@@ -58,7 +67,7 @@ const swaggerDocument = {
       LoginResponse: {
         type: 'object',
         properties: {
-          token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+          token: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5c...[TRUNCADO]' },
           tokenType: { type: 'string', example: 'Bearer' },
           expiresIn: { type: 'string', example: '1h' },
           expiresAt: { type: 'string', example: '2026-10-27T22:00:00.000Z' },
@@ -87,8 +96,8 @@ const swaggerDocument = {
     },
     '/register': {
       post: {
-        summary: 'Registro o alta de una nueva identidad de usuario',
-        description: 'Crea un nuevo usuario con contraseña hasheada mediante bcrypt. No expone password ni hash en la respuesta.',
+        summary: 'Registro o alta de una nueva identidad de usuario (SIEMPRE rol USER)',
+        description: 'Crea un nuevo usuario público con rol USER forzado y contraseña hasheada mediante bcrypt. No expone password ni hash en la respuesta.',
         requestBody: {
           required: true,
           content: {
@@ -99,13 +108,13 @@ const swaggerDocument = {
         },
         responses: {
           '201': {
-            description: 'Usuario creado exitosamente',
+            description: 'Usuario creado exitosamente con rol USER',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
-                    message: { type: 'string', example: 'Usuario registrado exitosamente.' },
+                    message: { type: 'string', example: 'Usuario registrado exitosamente con rol USER.' },
                     user: { $ref: '#/components/schemas/UserResponse' }
                   }
                 }
@@ -118,10 +127,43 @@ const swaggerDocument = {
         }
       }
     },
+    '/admin/users': {
+      post: {
+        summary: 'Procedimiento separado y protegido para alta de Administradores',
+        description: 'Permite crear nuevos administradores. Requiere autenticación con token Bearer y rol ADMIN (RBAC).',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/AdminCreateRequest' }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Administrador creado exitosamente',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string', example: 'Administrador creado exitosamente mediante procedimiento protegido.' },
+                    user: { $ref: '#/components/schemas/UserResponse' }
+                  }
+                }
+              }
+            }
+          },
+          '401': { description: 'Token ausente o inválido', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } },
+          '403': { description: 'Requiere rol ADMIN (Permisos insuficientes)', content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } } }
+        }
+      }
+    },
     '/login': {
       post: {
         summary: 'Autenticación mediante credenciales y emisión de Access Token JWT',
-        description: 'Verifica la contraseña contra el hash almacenado y emite un JWT firmado (HS256) con claims sub, role, email y vigencia exp.',
+        description: 'Verifica la contraseña contra el hash almacenado y emite un JWT firmado (HS256) con claims mínimos (sub, role, email) y vigencia exp.',
         requestBody: {
           required: true,
           content: {
@@ -162,7 +204,6 @@ const swaggerDocument = {
                       type: 'object',
                       properties: {
                         id: { type: 'string', example: '671e9821f0ab9a12c8401234' },
-                        username: { type: 'string', example: 'admin' },
                         email: { type: 'string', example: 'admin@uch.edu.ar' },
                         role: { type: 'string', example: 'ADMIN' }
                       }

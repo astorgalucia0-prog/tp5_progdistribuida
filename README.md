@@ -91,7 +91,8 @@ flowchart TD
 
 | Microservicio | Método | Endpoint | Acceso | Rol Requerido | Justificación de Negocio |
 | :--- | :---: | :--- | :---: | :---: | :--- |
-| **auth-service** | `POST` | `/api/auth/register` | **Público** | - | Alta libre de nuevas identidades de usuario. |
+| **auth-service** | `POST` | `/api/auth/register` | **Público** | - | Alta libre de nuevas identidades (rol forzado a `USER`). |
+| **auth-service** | `POST` | `/api/auth/admin/users` | **Restringido** | `ADMIN` | Alta exclusiva de administradores mediante token previo. |
 | **auth-service** | `POST` | `/api/auth/login` | **Público** | - | Autenticación con credenciales y emisión de token JWT. |
 | **auth-service** | `GET` | `/api/auth/me` | **Autenticado** | `USER` / `ADMIN` | Consulta de la identidad autenticada activa vía token. |
 | **catalog-service** | `GET` | `/api/catalog/products` | **Público** | - | Navegación del catálogo por visitantes no autenticados. |
@@ -222,7 +223,7 @@ Cada microservicio dispone de documentación interactiva OpenAPI 3.0 con esquema
 
 ### Cómo probar Swagger con Bearer Token:
 1. Abrir `http://localhost:3004/api-docs`.
-2. Ejecutar `POST /login` con `admin@uch.edu.ar` / `AdminPassword123!`.
+2. Ejecutar `POST /login` con las credenciales de administrador externalizadas en `.env` (`ADMIN_EMAIL` / `ADMIN_PASSWORD`).
 3. Copiar el valor del campo `token`.
 4. Abrir cualquier otro Swagger (ej: `http://localhost:3001/api-docs`).
 5. Hacer clic en el botón superior **Authorize 🔒**, pegar el token y confirmar.

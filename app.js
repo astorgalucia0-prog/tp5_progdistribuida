@@ -4,7 +4,7 @@
 // API REST con Node.js y Express (Recurso: Accesorios)
 // ==============================================================================
 
-const express = require('express');
+import express from 'express';
 const app = express();
 const PORT = 3000;
 

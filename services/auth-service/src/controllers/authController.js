@@ -18,10 +18,24 @@ export class AuthController {
   static async register(req, res, next) {
     try {
       if (!verificarPersistencia(res)) return;
-      const { username, email, password, role, nombre } = req.body;
-      const user = await AuthService.register({ username, email, password, role, nombre });
+      const { username, email, password, nombre } = req.body;
+      const user = await AuthService.register({ username, email, password, nombre });
       res.status(201).json({
-        message: 'Usuario registrado exitosamente.',
+        message: 'Usuario registrado exitosamente con rol USER.',
+        user
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async createAdmin(req, res, next) {
+    try {
+      if (!verificarPersistencia(res)) return;
+      const { username, email, password, nombre } = req.body;
+      const user = await AuthService.createAdminUser({ username, email, password, nombre });
+      res.status(201).json({
+        message: 'Administrador creado exitosamente mediante procedimiento protegido.',
         user
       });
     } catch (error) {
@@ -47,7 +61,6 @@ export class AuthController {
         authenticated: true,
         user: {
           id: req.user.sub,
-          username: req.user.username,
           email: req.user.email,
           role: req.user.role
         }

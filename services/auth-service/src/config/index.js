@@ -6,6 +6,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
 
+if (!process.env.JWT_SECRET) {
+  console.error('[FATAL] auth-service: La variable de entorno JWT_SECRET es obligatoria y no está configurada.');
+  process.exit(1);
+}
+
 export const config = {
   serviceName: 'auth-service',
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -14,10 +19,14 @@ export const config = {
   apiPrefix: process.env.API_PREFIX || '/api/auth',
   jsonLimit: process.env.JSON_LIMIT || '100kb',
   mongoURI: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/db_auth',
-  jwtSecret: process.env.JWT_SECRET || 'supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example',
+  jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',
   jwtIssuer: process.env.JWT_ISSUER || 'uch-distributed-auth',
   bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
+  adminUsername: process.env.ADMIN_USERNAME || 'admin',
+  adminEmail: process.env.ADMIN_EMAIL || 'admin@uch.edu.ar',
+  adminPassword: process.env.ADMIN_PASSWORD,
+  initialUserPassword: process.env.INITIAL_USER_PASSWORD,
   logLevel: process.env.LOG_LEVEL || 'info',
   logMaxFiles: process.env.LOG_MAX_FILES || '14d',
   logMaxSize: process.env.LOG_MAX_SIZE || '20m'

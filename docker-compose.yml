@@ -50,8 +50,12 @@ services:
       HOST: 0.0.0.0
       PORT: 3004
       API_PREFIX: /api/auth
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@uch.edu.ar}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      INITIAL_USER_PASSWORD: ${INITIAL_USER_PASSWORD}
       MONGODB_URI: mongodb://mongodb:27017/db_auth
-      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
+      JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
       JWT_ISSUER: ${JWT_ISSUER:-uch-distributed-auth}
       BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
@@ -85,7 +89,7 @@ services:
       PORT: 3001
       API_PREFIX: /api/catalog
       MONGODB_URI: mongodb://mongodb:27017/db_catalog
-      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
+      JWT_SECRET: ${JWT_SECRET}
       LOG_LEVEL: info
     ports:
       - "3001:3001"
@@ -116,7 +120,7 @@ services:
       REDIS_URL: redis://redis:6379
       LOCK_TTL_MS: 5000
       RESERVATION_TTL_SECONDS: 600
-      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
+      JWT_SECRET: ${JWT_SECRET}
       LOG_LEVEL: info
     ports:
       - "3002:3002"
@@ -148,7 +152,7 @@ services:
       MONGODB_URI: mongodb://mongodb:27017/db_orders
       CATALOG_SERVICE_URL: http://catalog-service:3001
       INVENTORY_SERVICE_URL: http://inventory-service:3002
-      JWT_SECRET: ${JWT_SECRET:-supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example}
+      JWT_SECRET: ${JWT_SECRET}
       REQUEST_TIMEOUT_MS: 3000
       LOG_LEVEL: info
     ports:

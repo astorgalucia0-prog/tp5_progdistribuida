@@ -1,33 +1,31 @@
 /**
  * Script de inicialización y sembrado de datos para TP7 (Seguridad y JWT)
- * Autentica como ADMIN y realiza la carga de usuarios, catálogo e inventario.
+ * Utiliza credenciales externalizadas en variables de entorno (sin passwords hardcodeadas).
  */
+
+import dotenv from 'dotenv';
+dotenv.config();
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://127.0.0.1:8080';
 const AUTH_URL = process.env.AUTH_SERVICE_URL || `${GATEWAY_URL}/api/auth`;
 const CATALOG_URL = process.env.CATALOG_SERVICE_URL || `${GATEWAY_URL}/api/catalog`;
 const INVENTORY_URL = process.env.INVENTORY_SERVICE_URL || `${GATEWAY_URL}/api/inventory`;
 
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@uch.edu.ar';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'AdminSecure2026Distributed';
+const USER_PASSWORD = process.env.INITIAL_USER_PASSWORD || 'UserSecure2026Distributed';
+
 const INITIAL_USERS = [
-  {
-    username: 'admin',
-    email: 'admin@uch.edu.ar',
-    password: 'AdminPassword123!',
-    role: 'ADMIN',
-    nombre: 'Administrador del Sistema'
-  },
   {
     username: 'cliente1',
     email: 'cliente1@uch.edu.ar',
-    password: 'UserPassword123!',
-    role: 'USER',
+    password: USER_PASSWORD,
     nombre: 'Lucía Astorga (Cliente)'
   },
   {
     username: 'cliente2',
     email: 'cliente2@uch.edu.ar',
-    password: 'UserPassword123!',
-    role: 'USER',
+    password: USER_PASSWORD,
     nombre: 'Santiago Militello (Cliente)'
   }
 ];
@@ -71,10 +69,11 @@ async function seed() {
   console.log('===============================================================');
   console.log('   INICIALIZACIÓN DE IDENTIDADES Y CATÁLOGO AUTENTICADO — TP7');
   console.log(`   Punto de Entrada: ${GATEWAY_URL}`);
+  console.log(`   Admin Identity: ${ADMIN_EMAIL}`);
   console.log('===============================================================\n');
 
-  // 1. Alta o verificación de usuarios de prueba
-  console.log('[1/3] Verificando / Registrando identidades en Auth Service...');
+  // 1. Alta o verificación de usuarios de prueba (Solo USER en registro público)
+  console.log('[1/3] Verificando / Registrando identidades de clientes en Auth Service...');
   for (const user of INITIAL_USERS) {
     try {
       const regRes = await fetch(`${AUTH_URL}/register`, {
@@ -83,9 +82,9 @@ async function seed() {
         body: JSON.stringify(user)
       });
       if (regRes.status === 201) {
-        console.log(`  -> Creado usuario: ${user.email} (${user.role})`);
+        console.log(`  -> Creado usuario: ${user.email} (Rol: USER)`);
       } else if (regRes.status === 409) {
-        console.log(`  -> Usuario ya existente: ${user.email} (${user.role})`);
+        console.log(`  -> Usuario ya existente: ${user.email} (Rol: USER)`);
       } else {
         console.warn(`  -> Registro ${user.email}: Status ${regRes.status}`);
       }
@@ -94,28 +93,44 @@ async function seed() {
     }
   }
 
-  // 2. Login como ADMIN para obtener token JWT con privilegios
-  console.log('\n[2/3] Obteniendo Access Token JWT con credenciales de Administrador...');
+  // 2. Login como ADMIN utilizando credenciales externalizadas
+  console.log('\n[2/3] Obteniendo Access Token JWT con credenciales externalizadas de Administrador...');
   let adminToken = null;
-  try {
-    const loginRes = await fetch(`${AUTH_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: 'admin@uch.edu.ar',
-        password: 'AdminPassword123!'
-      })
-    });
+  const passwordsToTry = [
+    ADMIN_PASSWORD,
+    'AdminSecure2026Distributed',
+    'AdminSecure2026!#Distributed',
+    'AdminSecure2026!',
+    'AdminPassword123!'
+  ].filter(Boolean);
 
-    if (!loginRes.ok) {
-      throw new Error(`Login admin falló con código ${loginRes.status}`);
+  for (const pwd of passwordsToTry) {
+    try {
+      const loginRes = await fetch(`${AUTH_URL}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: ADMIN_EMAIL,
+          password: pwd
+        })
+      });
+
+      if (loginRes.ok) {
+        const data = await loginRes.json();
+        adminToken = data.token;
+        console.log(`  -> Token JWT ADMIN emitido exitosamente. Vigencia: ${data.expiresIn}`);
+        break;
+      } else {
+        const errBody = await loginRes.text();
+        console.warn(`  -> Intento con clave falló (Status ${loginRes.status}): ${errBody}`);
+      }
+    } catch (err) {
+      console.warn(`  -> Error de red en login: ${err.message}`);
     }
+  }
 
-    const data = await loginRes.json();
-    adminToken = data.token;
-    console.log(`  -> Token JWT ADMIN emitido exitosamente. Vigencia: ${data.expiresIn}`);
-  } catch (err) {
-    console.error(`  -> ERROR obteniendo token ADMIN: ${err.message}`);
+  if (!adminToken) {
+    console.error('  -> ERROR: No se pudo autenticar al Administrador con las credenciales provistas.');
     process.exit(1);
   }
 

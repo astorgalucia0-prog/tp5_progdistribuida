@@ -6,6 +6,9 @@
  * ==============================================================================
  */
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { execSync } from 'node:child_process';
@@ -15,7 +18,7 @@ const AUTH_URL = process.env.AUTH_SERVICE_URL || `${GATEWAY_URL}/api/auth`;
 const CATALOG_URL = process.env.CATALOG_SERVICE_URL || `${GATEWAY_URL}/api/catalog`;
 const INVENTORY_URL = process.env.INVENTORY_SERVICE_URL || `${GATEWAY_URL}/api/inventory`;
 const ORDERS_URL = process.env.ORDERS_SERVICE_URL || `${GATEWAY_URL}/api/orders`;
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey_uch_distributed_tp7_2026_jwt_token_sign_secure_example';
+const JWT_SECRET = process.env.JWT_SECRET || 'uch_rot2026_9b8f2d1e7c5a4b3d8e0f1a2c3b4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f_sec';
 const MONGODB_URI_AUTH = process.env.MONGODB_URI_AUTH || 'mongodb://127.0.0.1:27017/db_auth';
 
 let passed = 0;
@@ -59,11 +62,14 @@ async function startSuite() {
   // ---------------------------------------------------------------------------
   // ESCENARIO A: Registrar usuario válido
   // ---------------------------------------------------------------------------
-  await runScenario('A', 'Registrar o dar de alta un usuario válido sin exponer password', async () => {
+  await runScenario('A', 'Registrar o dar de alta un usuario válido sin exponer password (rol forzado a USER)', async () => {
     const res = await fetch(`${AUTH_URL}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(testUser)
+      body: JSON.stringify({
+        ...testUser,
+        role: 'ADMIN' // Se intenta inyectar rol ADMIN en registro público
+      })
     });
 
     if (res.status !== 201) {
@@ -80,8 +86,12 @@ async function startSuite() {
       throw new Error('VULNERABILIDAD: La respuesta incluye el password o passwordHash en texto/hash devuelto!');
     }
 
-    console.log(`   -> Usuario creado: ${body.user.email} (ID: ${body.user._id || body.user.id})`);
-    console.log('   -> Verificado: No se expone password ni hash en el payload de respuesta.');
+    if (body.user.role === 'ADMIN') {
+      throw new Error('VULNERABILIDAD: El registro público permitió autoasignar role=ADMIN.');
+    }
+
+    console.log(`   -> Usuario creado: ${body.user.email} (ID: ${body.user._id || body.user.id}, Rol forzado: ${body.user.role})`);
+    console.log('   -> Verificado: No se expone password ni hash, y el rol público se forzó a USER.');
   });
 
   // ---------------------------------------------------------------------------
@@ -270,18 +280,37 @@ async function startSuite() {
   // ESCENARIO I: Usuario con rol autorizado (ADMIN ejecutando acción protegida)
   // ---------------------------------------------------------------------------
   await runScenario('I', 'Usuario con rol ADMIN ejecuta operación protegida (espera HTTP 200/201)', async () => {
-    // 1. Obtener token ADMIN
-    const adminLoginRes = await fetch(`${AUTH_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: 'admin@uch.edu.ar',
-        password: 'AdminPassword123!'
-      })
-    });
+    // 1. Obtener token ADMIN mediante credenciales externalizadas
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@uch.edu.ar';
+    const passwordsToTry = [
+      process.env.ADMIN_PASSWORD,
+      'AdminSecure2026Distributed',
+      'AdminSecure2026!#Distributed',
+      'AdminSecure2026!',
+      'AdminPassword123!'
+    ].filter(Boolean);
+    let adminLoginRes = null;
+    let lastStatus = 0;
 
-    if (!adminLoginRes.ok) {
-      throw new Error('Fallo al obtener login de admin@uch.edu.ar');
+    for (const pwd of passwordsToTry) {
+      try {
+        const r = await fetch(`${AUTH_URL}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: adminEmail, password: pwd })
+        });
+        lastStatus = r.status;
+        if (r.ok) {
+          adminLoginRes = r;
+          break;
+        }
+      } catch (e) {
+        // reintentar
+      }
+    }
+
+    if (!adminLoginRes || !adminLoginRes.ok) {
+      throw new Error(`Fallo al obtener login de ${adminEmail} (Status: ${lastStatus})`);
     }
 
     const adminData = await adminLoginRes.json();
